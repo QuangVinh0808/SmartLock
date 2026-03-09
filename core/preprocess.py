@@ -22,7 +22,10 @@ class ImagePreprocessor:
         return image
     
     def apply_clahe_lab(self, image):
-        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        if len(image.shape) == 2 and image.shape[2] == 1: # Kiểm tra nếu ảnh có 3 kênh màu
+            lab = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        else: 
+            lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
         l = self.clahe.apply(l) #Chỉ áp dụng CLAHE lên kênh L
         lab = cv2.merge((l, a, b))
