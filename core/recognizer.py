@@ -1,61 +1,119 @@
-import face_recognition
+import cv2
 import numpy as np
 import pickle
 import os
 
-class FaceRecognizer:
-    def __init__(self, db_path="face_database.pkl", tolerance=0.4):
+
+class MobileFaceNetRecognizer:
+
+    def __init__(self,
+                 model_path="mobilefacenet.onnx",
+                 db_path="face_db.pkl",
+                 threshold=0.9):
+
+        self.net = cv2.dnn.readNetFromONNX(model_path)
+
         self.db_path = db_path
-        self.tolerance = tolerance
-        self.known_faces = self.load_database()
+        self.threshold = threshold
 
-    def load_database(self):
-        if os.path.exists(self.db_path):
-            with open(self.db_path, "rb") as f:
-                return pickle.load(f)
-        return {}
+        if os.path.exists(db_path):
+            with open(db_path, "rb") as f:
+                self.database = pickle.load(f)
+        else:
+            self.database = {}
 
-    def save_database(self):
+    # =========================================
+    # FACE PREPROCESSING
+    # =========================================
+    def preprocess(self, face):
+
+        face = cv2.resize(face, (112, 112))
+
+        face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
+
+        face = face.astype(np.float32)
+
+        face = (face - 127.5) / 128.0
+
+        face = np.transpose(face, (2, 0, 1))
+
+        face = np.expand_dims(face, axis=0)
+
+        return face
+
+    # =========================================
+    # EXTRACT EMBEDDING
+    # =========================================
+    def get_embedding(self, face):
+
+        blob = self.preprocess(face)
+
+        self.net.setInput(blob)
+
+        emb = self.net.forward().flatten()
+
+        emb = emb / np.linalg.norm(emb)
+
+        return emb
+
+    # =========================================
+    # RECOGNITION
+    # =========================================
+    def recognize(self, face):
+
+        emb = self.get_embedding(face)
+
+        best_name = "Unknown"
+        best_dist = 999
+
+        for name, vectors in self.database.items():
+
+            for v in vectors:
+
+                dist = np.linalg.norm(emb - v)
+
+                if dist < best_dist:
+                    best_dist = dist
+                    best_name = name
+
+        if best_dist > self.threshold:
+            best_name = "Unknown"
+
+        return best_name, emb
+
+    # =========================================
+    # REGISTER NEW USER
+    # =========================================
+    def register(self, name, faces):
+
+        embeddings = []
+
+        for f in faces:
+
+            emb = self.get_embedding(f)
+
+            embeddings.append(emb)
+
+        self.database[name] = embeddings
+
+        self.save()
+
+    # =========================================
+    # ADAPTIVE LEARNING
+    # =========================================
+    def adaptive_update(self, name, emb):
+
+        if name == "Unknown":
+            return
+
+        self.database[name].append(emb)
+
+        if len(self.database[name]) > 50:
+            self.database[name] = self.database[name][-50:]
+
+        self.save()
+
+    def save(self):
+
         with open(self.db_path, "wb") as f:
-            pickle.dump(self.known_faces, f)
-
-    def update_adaptive(self, name, current_encoding, alpha=0.1):
-        """Cập nhật vector theo cơ chế Adaptive Learning"""
-        old_encoding = self.known_faces[name]
-        # Công thức trộn vector để thích nghi với thay đổi ngoại hình
-        updated_encoding = (1 - alpha) * old_encoding + alpha * current_encoding
-        self.known_faces[name] = updated_encoding
-        self.save_database()
-
-    def identify(self, frame, boxes):
-        """
-        Nhận diện dựa trên danh sách boxes từ HOGFaceDetector
-        boxes format: [(x1, y1, x2, y2), ...]
-        """
-        face_locations = [(y1, x2, y2, x1) for (x1, y1, x2, y2) in boxes]
-        rgb_frame = frame[:, :, ::-1] 
-        
-        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
-        
-        face_names = []
-        for i, face_encoding in enumerate(face_encodings):
-            name = "Stranger"
-            
-            if self.known_faces:
-                known_names = list(self.known_faces.keys())
-                known_vectors = list(self.known_faces.values())
-                
-                # So khớp
-                matches = face_recognition.compare_faces(known_vectors, face_encoding, tolerance=self.tolerance)
-                face_distances = face_recognition.face_distance(known_vectors, face_encoding)
-                
-                if len(face_distances) > 0:
-                    best_match_index = np.argmin(face_distances)
-                    if matches[best_match_index]:
-                        name = known_names[best_match_index]
-                        # Tự động cập nhật vector khi nhận diện đúng (Adaptive)
-                        self.update_adaptive(name, face_encoding)
-            
-            face_names.append(name)
-            
-        return face_names
+            pickle.dump(self.database, f)
