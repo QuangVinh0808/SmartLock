@@ -1,16 +1,18 @@
 import cv2
-from detector import HOGFaceDetector
-from recognizer import MobileFaceNetRecognizer
-from database import FaceDatabase
+
+from core.detector import HOGFaceDetector
+from core.recognizer import MobileFaceNetRecognizer
+from core.database import FaceDatabase
 
 
 detector = HOGFaceDetector()
 
 recognizer = MobileFaceNetRecognizer(
-    model_path="mobilefacenet.onnx"
+    model_path="models/MobileFaceNet.onnx"
 )
 
-db = FaceDatabase()
+database = FaceDatabase("data/face_db.pkl")
+
 
 name = input("Enter user name: ")
 
@@ -19,10 +21,15 @@ cap = cv2.VideoCapture(0)
 embeddings = []
 
 count = 0
+max_samples = 30
 
-while count < 30:
+
+while count < max_samples:
 
     ret, frame = cap.read()
+
+    if not ret:
+        break
 
     boxes = detector.detect(frame)
 
@@ -40,7 +47,7 @@ while count < 30:
 
         print("Captured:", count)
 
-    cv2.imshow("Register", frame)
+    cv2.imshow("Register User", frame)
 
     if cv2.waitKey(1) == 27:
         break
@@ -49,6 +56,8 @@ while count < 30:
 cap.release()
 cv2.destroyAllWindows()
 
-db.add_user(name, embeddings)
+
+# lưu vào database
+database.add_user(name, embeddings)
 
 print("User registered:", name)
