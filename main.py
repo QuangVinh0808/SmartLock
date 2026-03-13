@@ -1,7 +1,7 @@
 import cv2
 
 from core.preprocess import ImagePreprocessor
-
+from core.detector import HOGFaceDetector
 
 #Configure instance of PiCamera2
 """
