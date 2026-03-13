@@ -1,54 +1,68 @@
-import cv2
-from detector import HOGFaceDetector
-from recognizer import MobileFaceNetRecognizer
-from database import FaceDatabase
+import pickle
+import os
 
 
-detector = HOGFaceDetector()
+class FaceDatabase:
 
-recognizer = MobileFaceNetRecognizer(
-    model_path="mobilefacenet.onnx"
-)
+    def __init__(self, db_path="data/face_db.pkl"):
 
-db = FaceDatabase()
+        self.db_path = db_path
 
-name = input("Enter user name: ")
+        # nếu file tồn tại thì load
+        if os.path.exists(self.db_path):
 
-cap = cv2.VideoCapture(0)
+            with open(self.db_path, "rb") as f:
+                self.data = pickle.load(f)
 
-embeddings = []
+        else:
+            self.data = {}
 
-count = 0
+    # =====================================
+    # LƯU DATABASE
+    # =====================================
+    def save(self):
 
-while count < 30:
+        with open(self.db_path, "wb") as f:
+            pickle.dump(self.data, f)
 
-    ret, frame = cap.read()
+    # =====================================
+    # THÊM USER MỚI
+    # =====================================
+    def add_user(self, name, embeddings):
 
-    boxes = detector.detect(frame)
+        if name not in self.data:
+            self.data[name] = []
 
-    faces = detector.crop_faces(frame, boxes)
+        self.data[name].extend(embeddings)
 
-    if len(faces) > 0:
+        self.save()
 
-        face = faces[0]
+    # =====================================
+    # LẤY TẤT CẢ DATA
+    # =====================================
+    def get_all(self):
 
-        emb = recognizer.get_embedding(face)
+        return self.data
 
-        embeddings.append(emb)
+    # =====================================
+    # LẤY EMBEDDING CỦA 1 USER
+    # =====================================
+    def get_user(self, name):
 
-        count += 1
+        return self.data.get(name, [])
 
-        print("Captured:", count)
+    # =====================================
+    # XOÁ USER
+    # =====================================
+    def remove_user(self, name):
 
-    cv2.imshow("Register", frame)
+        if name in self.data:
+            del self.data[name]
+            self.save()
 
-    if cv2.waitKey(1) == 27:
-        break
+    # =====================================
+    # DANH SÁCH USER
+    # =====================================
+    def list_users(self):
 
-
-cap.release()
-cv2.destroyAllWindows()
-
-db.add_user(name, embeddings)
-
-print("User registered:", name)
+        return list(self.data.keys())
