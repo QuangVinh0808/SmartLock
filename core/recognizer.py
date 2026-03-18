@@ -1,18 +1,25 @@
 import cv2
+import cv2
 import numpy as np
 import pickle
 import os
-
+try:
+    import tflite_runtime.interpreter as tflite
+except ImportError:
+    import tensorflow.lite as tflite
 
 class MobileFaceNetRecognizer:
-
+class FaceNetTFLiteRecognizer:
     def __init__(self,
-                 model_path="mobilefacenet.onnx",
+    def __init__(self,
+                 model_path="../models/facenet.tflite",
                  db_path="face_db.pkl",
                  threshold=0.9):
-
         self.net = cv2.dnn.readNetFromONNX(model_path)
-
+        self.interpreter = tflite.Interpreter(model_path=model_path)
+        self.interpreter.allocate_tensors()
+        self.input_details = self.interpreter.get_input_details()
+        self.output_details = self.interpreter.get_output_details()
         self.db_path = db_path
         self.threshold = threshold
 
@@ -26,59 +33,41 @@ class MobileFaceNetRecognizer:
     # FACE PREPROCESSING
     # =========================================
     def preprocess(self, face):
-
-        face = cv2.resize(face, (112, 112))
-
+    def preprocess(self, face):
+        face = cv2.resize(face, (160, 160))
         face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
-
         face = face.astype(np.float32)
-
         face = (face - 127.5) / 128.0
-
-        face = np.transpose(face, (2, 0, 1))
-
         face = np.expand_dims(face, axis=0)
-
         return face
 
     # =========================================
     # EXTRACT EMBEDDING
     # =========================================
     def get_embedding(self, face):
-
-        blob = self.preprocess(face)
-
-        self.net.setInput(blob)
-
-        emb = self.net.forward().flatten()
-
+        input_data = self.preprocess(face)
+        self.interpreter.set_tensor(self.input_details[0]['index'], input_data)
+        self.interpreter.invoke()
+        emb = self.interpreter.get_tensor(self.output_details[0]['index'])[0]
         emb = emb / np.linalg.norm(emb)
-
         return emb
 
     # =========================================
     # RECOGNITION
     # =========================================
     def recognize(self, face):
-
         emb = self.get_embedding(face)
-
         best_name = "Unknown"
         best_dist = 999
-
         for name, vectors in self.database.items():
-
             for v in vectors:
-
                 dist = np.linalg.norm(emb - v)
-
                 if dist < best_dist:
                     best_dist = dist
                     best_name = name
-
         if best_dist > self.threshold:
             best_name = "Unknown"
-
+        return best_name, emb
         return best_name, emb
 
     # =========================================
